@@ -1,20 +1,36 @@
-
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyAc4hcwzCnGn9j9cBA9P6Fxk07dhs5SeOc",
-  authDomain: "medilink-c76ff.firebaseapp.com",
-  projectId: "medilink-c76ff",
-  storageBucket: "medilink-c76ff.firebasestorage.app",
-  messagingSenderId: "454604586703",
-  appId: "1:454604586703:web:3337f9b27d242303f6c1ba",
-  measurementId: "G-E3JCF8Q947"
-};
+const useEmulators = import.meta.env.VITE_USE_EMULATORS === "true";
+
+const firebaseConfig = useEmulators
+  ? {
+      apiKey: "demo-api-key",
+      authDomain: "demo-medilink.firebaseapp.com",
+      projectId: "demo-medilink",
+      appId: "demo-app",
+    }
+  : {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    };
 
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const functions = getFunctions(app, "us-central1");
+
+if (useEmulators) {
+  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+}
+
 export default app;

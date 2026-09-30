@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "emulators": "npx firebase-tools emulators:start --only auth,firestore,functions --project demo-medilink --import=./emulator-data --export-on-exit",
+    "seed": "node functions/seed-demo.js"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
