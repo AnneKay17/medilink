@@ -1,0 +1,479 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -- identity helpers ---------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function claim(name) {
+      return signedIn() && name in request.auth.token
+        ? request.auth.token[name] : '';
+    }
+
+    function role() {
+      return claim('role');
+    }
+
+    // MediLink account ID, distinct from Firebase Auth UID.
+    function mid() {
+      return claim('mid');
+    }
+
+    // Patient ID bound to this account.
+    function pid() {
+      return claim('pid');
+    }
+
+    function isAdmin() {
+      return signedIn() && role() == 'admin';
+    }
+
+    function isClinician() {
+      return signedIn() && role() == 'clinician';
+    }
+
+    function isOwnPatient(patientId) {
+      return pid() != '' && pid() == patientId;
+    }
+
+    function patientData(patientId) {
+      let path = /databases/$(database)/documents/Patients/$(patientId);
+      return exists(path) ? get(path).data : null;
+    }
+
+    // Verify the patient document's account binding.
+    function isSelfPatient(patientId) {
+      return signedIn()
+        && isOwnPatient(patientId)
+        && patientData(patientId) != null
+        && patientData(patientId).get('accountId', '') == mid()
+        && mid() != '';
+    }
+
+    // -- access grants ------------------------------------------------------
+
+    // AccessGrants document ID: patientId_accountId
+    function grantData(patientId) {
+      let path = /databases/$(database)/documents/AccessGrants/$(patientId + '_' + mid());
+      return exists(path) ? get(path).data : null;
+    }
+
+    function grantHas(patientId, capability) {
+      let g = grantData(patientId);
+      return g != null
+        && mid() != ''
+        && g.get('state', '') == 'active'
+        && g.get('startsAt', request.time) <= request.time
+        && (
+          !('expiresAt' in g)
+          || g.expiresAt == null
+          || g.expiresAt > request.time
+        )
+        && g.get('scope', {}).get(capability, false) == true;
+    }
+
+    function canReadIdentity(patientId) {
+      return isAdmin()
+        || isSelfPatient(patientId)
+        || grantHas(patientId, 'identity');
+    }
+
+    function canReadClinical(patientId) {
+      return isAdmin()
+        || isSelfPatient(patientId)
+        || grantHas(patientId, 'clinical');
+    }
+
+    // -- write helpers ------------------------------------------------------
+
+    function onlyTouch(allowed) {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys().hasOnly(allowed);
+    }
+
+    function isClinicalCollection(name) {
+      return name == 'Encounters'
+        || name == 'Conditions'
+        || name == 'Allergies'
+        || name == 'Medications'
+        || name == 'FamilyHistory';
+    }
+
+    function canManageAssistance(data) {
+      return isAdmin()
+        || (
+          isClinician()
+          && 'patientId' in data
+          && data.patientId is string
+          && data.patientId != ''
+          && grantHas(data.patientId, 'clinical')
+        );
+    }
+
+    function isLinkParty(data) {
+      return mid() != ''
+        && (
+          data.get('inviterAccountId', '') == mid()
+          || data.get('inviteeAccountId', '') == mid()
+        );
+    }
+
+    // An accepted family link connecting exactly these two patients.
+    function acceptedLinkBetween(linkId, patientA, patientB) {
+      let path = /databases/$(database)/documents/FamilyLinks/$(linkId);
+      return exists(path)
+        && get(path).data.get('state', '') == 'accepted'
+        && (
+          (get(path).data.get('inviterPatientId', '') == patientA
+            && get(path).data.get('inviteePatientId', '') == patientB)
+          ||
+          (get(path).data.get('inviterPatientId', '') == patientB
+            && get(path).data.get('inviteePatientId', '') == patientA)
+        );
+    }
+
+    // -- accounts -----------------------------------------------------------
+
+    match /Users/{accountId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || (
+          mid() != ''
+          && accountId == mid()
+          && resource.data.get('authUid', '') == request.auth.uid
+        )
+      );
+
+      // Account creation is backend-only.
+      allow create: if false;
+
+      // Only non-clinical profile fields may be changed by the owner.
+      allow update: if signedIn()
+        && mid() != ''
+        && accountId == mid()
+        && resource.data.get('authUid', '') == request.auth.uid
+        && onlyTouch(['displayName', 'preferredName', 'contact'])
+        && request.resource.data.displayName is string
+        && request.resource.data.contact is map;
+
+      allow delete: if false;
+    }
+
+    // -- patient identity ---------------------------------------------------
+
+    match /Patients/{patientId} {
+      allow read: if canReadIdentity(patientId);
+
+      allow create: if false;
+
+      // Contact logistics only. Reviewed fields require backend workflow.
+      allow update: if isSelfPatient(patientId)
+        && onlyTouch(['contact', 'address', 'emergencyContact'])
+        && request.resource.data.contact is map;
+
+      allow delete: if false;
+    }
+
+    // -- clinical items and immutable versions -----------------------------
+
+    match /Patients/{patientId}/{itemCollection}/{itemId} {
+      allow read: if isClinicalCollection(itemCollection)
+        && canReadClinical(patientId);
+
+      // All clinical writes go through trusted backend code.
+      allow create, update, delete: if false;
+
+      match /Versions/{versionId} {
+        allow read: if isClinicalCollection(itemCollection)
+          && canReadClinical(patientId);
+
+        allow create, update, delete: if false;
+      }
+    }
+
+    // -- reference data -----------------------------------------------------
+
+    match /Facilities/{facilityId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // -- authorisation records ---------------------------------------------
+
+    match /AccessGrants/{grantId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || isOwnPatient(resource.data.get('patientId', ''))
+        || (
+          mid() != ''
+          && resource.data.get('accountId', '') == mid()
+        )
+      );
+
+      allow write: if false;
+    }
+
+    match /EditGrants/{grantId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || isOwnPatient(resource.data.get('patientId', ''))
+        || (
+          mid() != ''
+          && resource.data.get('granteeAccountId', '') == mid()
+        )
+        || (
+          isClinician()
+          && grantHas(resource.data.get('patientId', ''), 'clinical')
+        )
+      );
+
+      allow write: if false;
+    }
+
+    // -- correction workflow -----------------------------------------------
+
+    match /CorrectionRequests/{requestId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || (
+          mid() != ''
+          && resource.data.get('requesterAccountId', '') == mid()
+        )
+        || (
+          isClinician()
+          && grantHas(resource.data.get('patientId', ''), 'clinical')
+        )
+      );
+
+      allow create: if signedIn()
+        && mid() != ''
+        && request.resource.data.patientId is string
+        && isSelfPatient(request.resource.data.patientId)
+        && request.resource.data.requesterAccountId == mid()
+        && request.resource.data.state == 'submitted'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.targetCollection is string
+        && request.resource.data.targetCollection in [
+          'Encounters',
+          'Conditions',
+          'Allergies',
+          'Medications',
+          'FamilyHistory'
+        ]
+        && request.resource.data.targetItemId is string
+        && request.resource.data.targetItemId.size() > 0
+        && request.resource.data.targetVersionId is string
+        && request.resource.data.targetVersionId.size() > 0
+        && request.resource.data.targetField is string
+        && request.resource.data.targetField.size() > 0
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.keys().hasOnly([
+          'requesterAccountId',
+          'patientId',
+          'targetCollection',
+          'targetItemId',
+          'targetVersionId',
+          'targetField',
+          'reason',
+          'proposedValue',
+          'evidence',
+          'state',
+          'createdAt'
+        ]);
+
+      allow update, delete: if false;
+    }
+
+    // -- assistance / interpreter requests ---------------------------------
+
+    match /AssistanceRequests/{requestId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || (
+          mid() != ''
+          && resource.data.get('requesterAccountId', '') == mid()
+        )
+        || canManageAssistance(resource.data)
+      );
+
+      allow create: if signedIn()
+        && mid() != ''
+        && request.resource.data.requesterAccountId == mid()
+        && request.resource.data.state == 'open'
+        && request.resource.data.createdAt == request.time
+        && (
+          !('patientId' in request.resource.data)
+          || (
+            request.resource.data.patientId is string
+            && isSelfPatient(request.resource.data.patientId)
+          )
+        )
+        && request.resource.data.keys().hasOnly([
+          'requesterAccountId',
+          'patientId',
+          'facilityId',
+          'category',
+          'message',
+          'preferredChannel',
+          'state',
+          'createdAt'
+        ]);
+
+      allow update: if signedIn()
+        && canManageAssistance(resource.data)
+        && onlyTouch([
+          'state',
+          'assignedAccountId',
+          'respondedAt',
+          'resolution',
+          'note'
+        ])
+        && request.resource.data.state is string;
+
+      allow delete: if false;
+    }
+
+    // -- family links -------------------------------------------------------
+
+    match /FamilyLinks/{linkId} {
+      allow read: if signedIn() && (
+        isAdmin() || isLinkParty(resource.data)
+      );
+
+      allow create: if signedIn()
+        && mid() != ''
+        && isSelfPatient(request.resource.data.inviterPatientId)
+        && request.resource.data.inviterAccountId == mid()
+        && request.resource.data.inviteeAccountId is string
+        && request.resource.data.inviteeAccountId != ''
+        && request.resource.data.inviteeAccountId != mid()
+        && request.resource.data.relationshipFromInviter is string
+        && request.resource.data.relationshipFromInviter != ''
+        && request.resource.data.state == 'invited'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'inviterAccountId',
+          'inviterPatientId',
+          'inviteeAccountId',
+          'inviteePatientId',
+          'relationshipFromInviter',
+          'relationshipFromInvitee',
+          'state',
+          'createdAt'
+        ]);
+
+      // Only the invited account can accept, once.
+      allow update: if signedIn()
+        && mid() != ''
+        && resource.data.get('inviteeAccountId', '') == mid()
+        && resource.data.get('state', '') == 'invited'
+        && onlyTouch(['state', 'acceptedAt'])
+        && request.resource.data.state == 'accepted'
+        && request.resource.data.acceptedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // -- family sharing -----------------------------------------------------
+
+    match /SharingPermissions/{permissionId} {
+      allow read: if signedIn() && (
+        isAdmin()
+        || isOwnPatient(resource.data.get('sourcePatientId', ''))
+        || isOwnPatient(resource.data.get('recipientPatientId', ''))
+        || (
+          isClinician()
+          && (
+            grantHas(resource.data.get('sourcePatientId', ''), 'clinical')
+            || grantHas(resource.data.get('recipientPatientId', ''), 'clinical')
+          )
+        )
+      );
+
+      // Patient may create a sharing permission for their own record, but only
+      // over an accepted family link between the two patients.
+      allow create: if signedIn()
+        && mid() != ''
+        && isSelfPatient(request.resource.data.sourcePatientId)
+        && request.resource.data.sourceAccountId == mid()
+        && request.resource.data.recipientPatientId is string
+        && request.resource.data.recipientPatientId != ''
+        && request.resource.data.recipientPatientId != request.resource.data.sourcePatientId
+        && request.resource.data.familyLinkId is string
+        && request.resource.data.familyLinkId != ''
+        && acceptedLinkBetween(
+          request.resource.data.familyLinkId,
+          request.resource.data.sourcePatientId,
+          request.resource.data.recipientPatientId
+        )
+        && request.resource.data.itemIds is list
+        && request.resource.data.sharingLevel is string
+        && request.resource.data.sharingLevel in [
+          'summary',
+          'selected_items'
+        ]
+        && request.resource.data.state == 'active'
+        && request.resource.data.grantedAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'sourceAccountId',
+          'sourcePatientId',
+          'recipientPatientId',
+          'familyLinkId',
+          'itemIds',
+          'sharingLevel',
+          'state',
+          'grantedAt'
+        ]);
+
+      // Client can withdraw only. Backend owns other changes.
+      allow update: if signedIn()
+        && mid() != ''
+        && isSelfPatient(resource.data.get('sourcePatientId', ''))
+        && resource.data.get('sourceAccountId', '') == mid()
+        && resource.data.get('state', '') == 'active'
+        && onlyTouch(['state', 'withdrawnAt'])
+        && request.resource.data.state == 'withdrawn'
+        && request.resource.data.withdrawnAt == request.time;
+
+      allow delete: if false;
+    }
+
+    // -- backend-materialised safe projection ------------------------------
+
+    match /SharedFamilyItems/{shareId} {
+      allow read: if signedIn()
+        && resource.data.get('state', '') == 'active'
+        && (
+          isAdmin()
+          || isOwnPatient(resource.data.get('recipientPatientId', ''))
+          || grantHas(resource.data.get('recipientPatientId', ''), 'clinical')
+        );
+
+      allow write: if false;
+    }
+
+    // -- backend-only stores ------------------------------------------------
+
+    match /RestrictedFamilyInfo/{restrictedId} {
+      allow read, write: if false;
+    }
+
+    match /AuditLogs/{logId} {
+      allow read, write: if false;
+    }
+
+    match /PatientIdIndex/{lookupKey} {
+      allow read, write: if false;
+    }
+
+    match /IdempotencyKeys/{idempotencyKey} {
+      allow read, write: if false;
+    }
+  }
+}
+

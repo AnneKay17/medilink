@@ -1,0 +1,150 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "Encounters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "facilityId", "order": "ASCENDING" },
+        { "fieldPath": "startAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "Encounters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clinicianAccountId", "order": "ASCENDING" },
+        { "fieldPath": "startAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "Conditions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clinicalState", "order": "ASCENDING" },
+        { "fieldPath": "lastReviewedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "Allergies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "clinicalStatus", "order": "ASCENDING" },
+        { "fieldPath": "lastReviewedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "Medications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "currentUseStatus", "order": "ASCENDING" },
+        { "fieldPath": "startAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "FamilyHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "side", "order": "ASCENDING" },
+        { "fieldPath": "recordedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "AuditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patientId", "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "AuditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "actor.accountId", "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "AuditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "action", "order": "ASCENDING" },
+        { "fieldPath": "occurredAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "CorrectionRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "CorrectionRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "patientId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "AssistanceRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "AccessGrants",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "grantedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "FamilyLinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "inviteeAccountId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "FamilyLinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "inviterAccountId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "SharingPermissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sourcePatientId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "SharingPermissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientPatientId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "SharedFamilyItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientPatientId", "order": "ASCENDING" },
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "sharedAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
