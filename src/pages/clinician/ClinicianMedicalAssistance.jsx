@@ -4,11 +4,9 @@ import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 
-import {
-  // eslint-disable-next-line no-unused-vars
-  getPendingAssistanceRequests,
-  mockMedicalAssistanceRequests,
-} from '../../data/mockMedicalAssistance';
+import { medicalAssistanceService } from '../../services/medicalAssistanceService';
+import { auditService } from '../../services/auditService';
+import { useAuth } from '../../hooks/useAuth';
 
 // Clinician: Medical Assistance
 // View and manage patient assistance requests
@@ -60,8 +58,10 @@ const statusConfig = {
 };
 
 export const ClinicianMedicalAssistance = () => {
+  const { user } = useAuth();
+
   const [requests, setRequests] = useState(
-    mockMedicalAssistanceRequests
+    medicalAssistanceService.getAll()
   );
 
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -74,32 +74,58 @@ export const ClinicianMedicalAssistance = () => {
         );
 
   const handleStartRequest = (requestId) => {
+    const updatedRequest =
+      medicalAssistanceService.updateRequest(requestId, {
+        status: 'in-progress',
+        assignedTo: user?.id,
+      });
+
     setRequests((prevRequests) =>
       prevRequests.map((request) =>
         request.id === requestId
-          ? {
-              ...request,
-              status: 'in-progress',
-              assignedTo: 'clinician-001',
-            }
+          ? updatedRequest
           : request
       )
     );
+
+    if (updatedRequest) {
+      auditService.addLog({
+        clinicianId: user?.id,
+        clinicianName: user?.name,
+        patientId: updatedRequest.patientId,
+        patientName: updatedRequest.patientName,
+        action: 'started_assistance',
+        description: 'Started a medical assistance request',
+      });
+    }
   };
 
   const handleResolveRequest = (requestId) => {
+    const updatedRequest =
+      medicalAssistanceService.updateRequest(requestId, {
+        status: 'resolved',
+        assignedTo: user?.id,
+        resolvedAt: new Date().toISOString(),
+      });
+
     setRequests((prevRequests) =>
       prevRequests.map((request) =>
         request.id === requestId
-          ? {
-              ...request,
-              status: 'resolved',
-              assignedTo: 'clinician-001',
-              resolvedAt: new Date().toISOString(),
-            }
+          ? updatedRequest
           : request
       )
     );
+
+    if (updatedRequest) {
+      auditService.addLog({
+        clinicianId: user?.id,
+        clinicianName: user?.name,
+        patientId: updatedRequest.patientId,
+        patientName: updatedRequest.patientName,
+        action: 'resolved_assistance',
+        description: 'Resolved a medical assistance request',
+      });
+    }
   };
 
   return (

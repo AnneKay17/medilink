@@ -1,13 +1,24 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+
 import { Card } from '../../components/common/Card';
+
 import { getPatientById } from '../../data/mockPatients';
 
-// Form for clinicians to add a new clinical record
-// This will later save to Firestore
+import { useAuth } from '../../hooks/useAuth';
+
+import { auditService } from '../../services/auditService';
+import {
+  clinicalRecordService,
+} from '../../services/clinicalRecordService';
+
+// Form for clinicians to create a draft or submit a clinical record.
+
 export const AddClinicalRecord = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
+
+  const { user } = useAuth();
 
   const patient = getPatientById(patientId);
 
@@ -17,7 +28,7 @@ export const AddClinicalRecord = () => {
     title: '',
     description: '',
     facility: '',
-    clinician: '',
+    clinician: user?.name || '',
   });
 
   const [error, setError] = useState('');
@@ -29,11 +40,13 @@ export const AddClinicalRecord = () => {
       ...currentData,
       [name]: value,
     }));
+
+    if (error) {
+      setError('');
+    }
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
-
+  const validateForm = () => {
     if (
       !formData.title.trim() ||
       !formData.description.trim() ||
@@ -41,14 +54,63 @@ export const AddClinicalRecord = () => {
       !formData.clinician.trim()
     ) {
       setError('Please complete all required fields.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSaveDraft = () => {
+    if (!validateForm()) {
       return;
     }
 
-    // For now, we only simulate saving the record.
-    // Firestore persistence will be added in Phase 8.
-    console.log('New clinical record:', {
+    clinicalRecordService.saveDraft({
       patientId,
-      ...formData,
+      clinicianId: user?.id,
+      clinicianName: formData.clinician,
+      facility: formData.facility.trim(),
+      date: formData.date,
+      type: formData.type,
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+    });
+
+    auditService.addLog({
+      clinicianId: user?.id,
+      clinicianName: formData.clinician,
+      patientId,
+      patientName: patient.name,
+      action: 'saved_draft',
+      description: 'Saved a clinical record draft',
+    });
+
+    navigate(`/clinician/patients/${patientId}`);
+  };
+
+  const handleSubmitRecord = () => {
+    if (!validateForm()) {
+      return;
+    }
+
+    clinicalRecordService.submitRecord({
+      patientId,
+      clinicianId: user?.id,
+      clinicianName: formData.clinician,
+      facility: formData.facility.trim(),
+      date: formData.date,
+      type: formData.type,
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+    });
+
+    auditService.addLog({
+      clinicianId: user?.id,
+      clinicianName: formData.clinician,
+      patientId,
+      patientName: patient.name,
+      action: 'submitted_record',
+      description: 'Submitted and locked a clinical record',
     });
 
     navigate(`/clinician/patients/${patientId}`);
@@ -96,13 +158,25 @@ export const AddClinicalRecord = () => {
         </h1>
 
         <p className="mt-2 text-gray-600">
-          Add a new clinical entry to {patient.name}'s medical history.
+          Create a consultation record for {patient.name}.
         </p>
       </div>
 
+      {/* Workflow notice */}
+      <Card className="bg-blue-50 border border-blue-200">
+        <p className="text-sm text-gray-700">
+          <strong>Clinical record workflow:</strong> You can save your work
+          as a draft or submit the completed record. Submitted records are
+          treated as locked versions and cannot be overwritten.
+        </p>
+      </Card>
+
       {/* Form */}
       <Card>
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form
+          onSubmit={(event) => event.preventDefault()}
+          className="space-y-6"
+        >
 
           {/* Date */}
           <div>
@@ -222,7 +296,6 @@ export const AddClinicalRecord = () => {
               type="text"
               value={formData.clinician}
               onChange={handleChange}
-              placeholder="e.g. Dr. Mokoena"
               className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -248,10 +321,19 @@ export const AddClinicalRecord = () => {
             </Link>
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleSaveDraft}
+              className="inline-flex items-center justify-center px-4 py-2 border border-blue-600 text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              Save Draft
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSubmitRecord}
               className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
             >
-              Save Clinical Record
+              Submit & Lock Record
             </button>
 
           </div>

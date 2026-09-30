@@ -6,7 +6,7 @@ import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 
-import { getPatientAssistanceRequests } from '../../data/mockMedicalAssistance';
+import { medicalAssistanceService } from '../../services/medicalAssistanceService';
 
 // Patient: Medical Assistance
 // Submit requests for help and view request status
@@ -38,7 +38,7 @@ export const MedicalAssistance = () => {
 
   // Keep requests in local state for the mock/demo stage
   const [requests, setRequests] = useState(
-    getPatientAssistanceRequests('patient-001')
+    medicalAssistanceService.getForPatient('patient-001')
   );
 
   const [formData, setFormData] = useState({
@@ -69,19 +69,14 @@ export const MedicalAssistance = () => {
       return;
     }
 
-    const newRequest = {
-      id: `assistance-${Date.now()}`,
+    const newRequest = medicalAssistanceService.createRequest({
       patientId: 'patient-001',
       patientName: 'Nomsa Dlamini',
       type: formData.type,
       title: formData.title.trim(),
       description: formData.description.trim(),
       priority: formData.priority,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      assignedTo: null,
-      resolvedAt: null,
-    };
+    });
 
     setRequests((prev) => [newRequest, ...prev]);
 

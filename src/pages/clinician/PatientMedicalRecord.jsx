@@ -1,18 +1,42 @@
 import { Link, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
 import { Card } from '../../components/common/Card';
 import { getPatientById } from '../../data/mockPatients';
 import {
   noomsaMedicalRecord,
-  mockTimelineEvents,
   mockFamilyHistory,
 } from '../../data/mockMedicalData';
 
+import { useAuth } from '../../hooks/useAuth';
+import { auditService } from '../../services/auditService';
+
+import { clinicalRecordService } from '../../services/clinicalRecordService';
 // Patient medical record
 // Displays a patient's verified medical information to a clinician
 export const PatientMedicalRecord = () => {
   const { patientId } = useParams();
 
   const patient = getPatientById(patientId);
+
+  const { user } = useAuth();
+
+  const clinicalRecords =
+    clinicalRecordService.getRecordsForPatient(patientId);
+
+  useEffect(() => {
+    if (!patient || !user) {
+      return;
+    }
+
+    auditService.addLog({
+      clinicianId: user.id,
+      clinicianName: user.name,
+      patientId: patient.id,
+      patientName: patient.name,
+      action: 'viewed_record',
+      description: 'Viewed patient medical record',
+    });
+  }, [patientId]);
 
   // For the hackathon demo, Nomsa is our main patient.
   // This will later be replaced with data loaded from Firebase.
@@ -263,37 +287,63 @@ export const PatientMedicalRecord = () => {
 
         <Card>
           <div className="space-y-6">
-            {mockTimelineEvents.map((event, index) => (
+            {clinicalRecords.map((record, index) => (
               <div
-                key={event.id}
+                key={record.id}
                 className="flex gap-4"
               >
                 {/* Timeline indicator */}
                 <div className="flex flex-col items-center">
                   <div className="w-3 h-3 bg-blue-500 rounded-full flex-shrink-0" />
 
-                  {index !== mockTimelineEvents.length - 1 && (
+                  {index !== clinicalRecords.length - 1 && (
                     <div className="w-px flex-1 bg-gray-200 mt-2" />
                   )}
                 </div>
 
-                {/* Event */}
-                <div className="pb-6 min-w-0">
-                  <p className="text-xs text-gray-500">
-                    {event.date}
-                  </p>
+                {/* Record */}
+                <div className="pb-6 min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-gray-500">
+                      {record.date}
+                    </p>
+
+                    {record.status === 'submitted' && (
+                      <span className="px-2 py-1 text-xs font-medium bg-green-50 text-green-700 rounded-full">
+                        Submitted
+                      </span>
+                    )}
+
+                    {record.status === 'draft' && (
+                      <span className="px-2 py-1 text-xs font-medium bg-yellow-50 text-yellow-700 rounded-full">
+                        Draft
+                      </span>
+                    )}
+
+                    {record.locked && (
+                      <span className="text-xs text-gray-500">
+                        🔒 Locked
+                      </span>
+                    )}
+                  </div>
 
                   <h3 className="font-semibold text-gray-900 mt-1">
-                    {event.title}
+                    {record.title}
                   </h3>
 
                   <p className="text-sm text-gray-600 mt-1">
-                    {event.description}
+                    {record.description}
                   </p>
 
                   <p className="text-xs text-gray-500 mt-2">
-                    {event.facility} · {event.clinician}
+                    {record.facility} · {record.clinician}
                   </p>
+
+                  {record.status === 'submitted' && record.version && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Record version {record.version}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
