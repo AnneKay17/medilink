@@ -1,267 +1,298 @@
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
-import { getFacilityById } from '../../data/mockFacilities';
+
+import { getFacilityById } from '../../data/facilities';
+import { googleMapsUrl } from '../../utils/facilitySearch';
 
 const facilityTypeIcons = {
-  Hospital: '🏥',
-  Clinic: '🏨',
-  'Private Practice': '👨‍⚕️',
+  Clinic: '🏥',
+  'Satellite Clinic': '🏥',
+  'Health Post': '⚕️',
+  'Community Health Centre': '🏥',
+  'Community Health Centre (After hours)': '🏥',
+  'Community Health Centre/Clinic': '🏥',
+  'District Hospital': '🏥',
+  'Regional Hospital': '🏥',
+  'Provincial Tertiary Hospital': '🏥',
+  'National Central Hospital': '🏥',
+  'Medical Centre': '⚕️',
 };
 
-// Patient: Facility Details
-// Shows detailed information about a healthcare facility
+const evidenceLabels = {
+  verified_available: 'Verified available',
+  reported_on_official_page:
+    'Reported on official page',
+  reported_available_on_current_page:
+    'Reported on current page',
+  reported_available_by_city:
+    'Reported at city level',
+  reported_available_by_province:
+    'Reported at province level',
+};
+
+const getEvidenceLabel = (availability) => {
+  return (
+    evidenceLabels[availability] ||
+    'Status unknown'
+  );
+};
+
 export const FacilityDetails = () => {
   const { facilityId } = useParams();
 
-  const facility = getFacilityById(facilityId);
+  const [facility, setFacility] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!facility) {
+  useEffect(() => {
+    const loadFacility = async () => {
+      try {
+        setIsLoading(true);
+        setError('');
+
+        const data = await getFacilityById(facilityId);
+
+        setFacility(data || null);
+      } catch (err) {
+        console.error(err);
+        setError(
+          'We could not load this facility.'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFacility();
+  }, [facilityId]);
+
+  if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="max-w-5xl mx-auto">
+        <Card>
+          <div className="py-10 text-center text-gray-500">
+            Loading facility...
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !facility) {
+    return (
+      <div className="max-w-5xl mx-auto space-y-4">
         <Link
-          to="/patient/healthcare"
-          className="text-sm text-blue-600 hover:text-blue-700"
+          to="/patient/healthcare-finder"
+          className="text-blue-600 hover:text-blue-800"
         >
           ← Back to Healthcare Finder
         </Link>
 
-        <Card className="text-center py-10">
+        <Card>
           <h1 className="text-xl font-semibold text-gray-900">
             Facility not found
           </h1>
 
-          <p className="text-gray-600 mt-2">
-            We could not find the healthcare facility you are looking for.
+          <p className="mt-2 text-gray-600">
+            {error ||
+              'We could not find this healthcare facility.'}
           </p>
         </Card>
       </div>
     );
   }
 
-  const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-    `${facility.name}, ${facility.address}`
-  )}`;
+  const icon =
+    facilityTypeIcons[facility.type] || '🏥';
 
   return (
-    <div className="space-y-6">
-
-      {/* Back button */}
+    <div className="max-w-5xl mx-auto space-y-6">
       <Link
         to="/patient/healthcare-finder"
-        className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700"
+        className="inline-flex items-center text-blue-600 hover:text-blue-800"
       >
         ← Back to Healthcare Finder
       </Link>
 
-      {/* Header */}
       <Card>
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">
-                {facilityTypeIcons[facility.type]}
-              </span>
+        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="text-4xl">{icon}</div>
 
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                {facility.name}
-              </h1>
+          <div className="flex-1">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {facility.name}
+                </h1>
+
+                <p className="mt-1 text-gray-600">
+                  {facility.type}
+                </p>
+              </div>
+
+              {facility.coordinateCaution ? (
+                <Badge variant="pending">
+                  Location caution
+                </Badge>
+              ) : (
+                <Badge variant="active">
+                  Facility data
+                </Badge>
+              )}
             </div>
-
-            <p className="text-gray-600 mt-2">
-              {facility.type} · {facility.city}, {facility.province}
-            </p>
           </div>
-
-          {facility.verified && (
-            <Badge variant="active">
-              Verified
-            </Badge>
-          )}
         </div>
       </Card>
 
-      {/* Contact information */}
       <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Contact Information
-        </h2>
-
-        <div className="space-y-4">
-
-          <div>
-            <p className="text-sm font-medium text-gray-700">
-              Address
-            </p>
-            <p className="text-gray-600 mt-1">
-              {facility.address}
-            </p>
-          </div>
-
-          <div>
-            <p className="text-sm font-medium text-gray-700">
-              Phone
-            </p>
-            <a
-              href={`tel:${facility.phone}`}
-              className="text-blue-600 hover:text-blue-700 mt-1 inline-block"
-            >
-              {facility.phone}
-            </a>
-          </div>
-
-          <div>
-            <p className="text-sm font-medium text-gray-700">
-              Email
-            </p>
-            <a
-              href={`mailto:${facility.email}`}
-              className="text-blue-600 hover:text-blue-700 mt-1 inline-block"
-            >
-              {facility.email}
-            </a>
-          </div>
-
-          <div>
-            <p className="text-sm font-medium text-gray-700">
-              Website
-            </p>
-            <a
-              href={facility.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 hover:text-blue-700 mt-1 inline-block break-all"
-            >
-              Visit website
-            </a>
-          </div>
-
-        </div>
-      </Card>
-
-      {/* Hours */}
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Opening Hours
-        </h2>
-
-        <p className="text-gray-600">
-          {facility.hours}
-        </p>
-      </Card>
-
-      {/* Rating */}
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Rating
-        </h2>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xl">⭐</span>
-
-          <span className="text-lg font-semibold text-gray-900">
-            {facility.rating}
-          </span>
-
-          <span className="text-gray-500">
-            ({facility.reviews} reviews)
-          </span>
-        </div>
-      </Card>
-
-      {/* Services */}
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Services Offered
-        </h2>
-
-        <div className="flex flex-wrap gap-2">
-          {facility.servicesOffered.map((service) => (
-            <Badge key={service} variant="pending">
-              {service}
-            </Badge>
-          ))}
-        </div>
-      </Card>
-
-      {/* Insurance */}
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Accepted Insurance
-        </h2>
-
-        <div className="flex flex-wrap gap-2">
-          {facility.acceptedInsurance.map((insurance) => (
-            <span
-              key={insurance}
-              className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm"
-            >
-              {insurance}
-            </span>
-          ))}
-        </div>
-      </Card>
-
-      {/* Location */}
-      <Card>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">
           Location
         </h2>
 
-        <p className="text-gray-600">
-          {facility.address}
-        </p>
+        <div className="mt-4 space-y-2 text-gray-700">
+          {facility.address && (
+            <p>
+              <strong>Address:</strong>{' '}
+              {facility.address}
+            </p>
+          )}
 
-        <p className="text-sm text-gray-500 mt-2">
-          {facility.city}, {facility.province}
-        </p>
+          {facility.locality && (
+            <p>
+              <strong>Locality:</strong>{' '}
+              {facility.locality}
+            </p>
+          )}
 
-        <a
-          href={googleMapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
-        >
-          View location on Google Maps
-          <span aria-hidden="true">→</span>
-        </a>
+          {facility.district && (
+            <p>
+              <strong>District:</strong>{' '}
+              {facility.district}
+            </p>
+          )}
 
-        <p className="text-xs text-gray-400 mt-3">
-          Coordinates: {facility.coordinates.lat},{' '}
-          {facility.coordinates.lng}
-        </p>
+          {facility.province && (
+            <p>
+              <strong>Province:</strong>{' '}
+              {facility.province}
+            </p>
+          )}
+        </div>
+
+        {facility.coordinateCaution && (
+          <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+            <p className="text-sm text-yellow-900">
+              The coordinates for this facility have been
+              flagged for caution. Check the location before
+              travelling.
+            </p>
+          </div>
+        )}
+
+        <div className="mt-5">
+          <a
+            href={googleMapsUrl(facility)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button type="button">
+              Open in Google Maps
+            </Button>
+          </a>
+        </div>
       </Card>
 
-      {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <a
-          href={`tel:${facility.phone}`}
-          className="flex-1"
-        >
-          <Button
-            variant="primary"
-            size="md"
-            fullWidth
-          >
-            Call Facility
-          </Button>
-        </a>
+      <Card>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              Services
+            </h2>
 
-        <Link
-          to="/patient/healthcare-finder"
-          className="flex-1"
-        >
-          <Button
-            variant="secondary"
-            size="md"
-            fullWidth
-          >
-            Back to Facilities
-          </Button>
-        </Link>
-      </div>
+            <p className="mt-1 text-sm text-gray-600">
+              Service information and its evidence status.
+            </p>
+          </div>
 
+          <span className="text-sm text-gray-500">
+            {facility.services?.length || 0} listed
+          </span>
+        </div>
+
+        {!facility.services ||
+        facility.services.length === 0 ? (
+          <div className="mt-5 rounded-lg bg-gray-50 p-4">
+            <p className="text-sm text-gray-600">
+              No service information is currently available
+              for this facility.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 space-y-4">
+            {facility.services.map((service, index) => (
+              <div
+                key={`${service.name}-${index}`}
+                className="rounded-lg border border-gray-200 p-4"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                  <div>
+                    <h3 className="font-medium text-gray-900">
+                      {service.name}
+                    </h3>
+
+                    {service.category && (
+                      <p className="mt-1 text-sm text-gray-500">
+                        {service.category}
+                      </p>
+                    )}
+                  </div>
+
+                  <Badge variant="active">
+                    {getEvidenceLabel(
+                      service.availability
+                    )}
+                  </Badge>
+                </div>
+
+                {service.note && (
+                  <p className="mt-3 text-sm text-gray-600">
+                    {service.note}
+                  </p>
+                )}
+
+                {service.sources?.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium text-gray-900">
+                      Sources
+                    </p>
+
+                    <div className="mt-2 space-y-1">
+                      {service.sources.map(
+                        (source, sourceIndex) => (
+                          <a
+                            key={`${source.url}-${sourceIndex}`}
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-sm text-blue-600 hover:text-blue-800 hover:underline break-all"
+                          >
+                            {source.publisher ||
+                              source.url}
+                          </a>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 };

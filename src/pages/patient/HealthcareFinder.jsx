@@ -1,315 +1,445 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+
 import { PatientLayout } from '../../layouts/PatientLayout';
 import { SearchBar } from '../../components/common/SearchBar';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
 import { Button } from '../../components/common/Button';
-// eslint-disable-next-line no-unused-vars
-import { mockFacilities, searchFacilities, filterFacilitiesByProvince } from '../../data/mockFacilities';
 
-// Patient: Healthcare Finder
-// Find healthcare facilities (hospitals, clinics)
-// Search, filter by type, view details
+import { getFacilities } from '../../data/facilities';
+import {
+  DEMO_ORIGIN,
+  googleMapsUrl,
+  searchFacilities,
+} from '../../utils/facilitySearch';
 
 const facilityTypeIcons = {
-  'Hospital': '🏥',
-  'Clinic': '🏨',
-  'Private Practice': '👨‍⚕️',
+  Clinic: '🏥',
+  'Satellite Clinic': '🏥',
+  'Health Post': '⚕️',
+  'Community Health Centre': '🏥',
+  'Community Health Centre (After hours)': '🏥',
+  'Community Health Centre/Clinic': '🏥',
+  'District Hospital': '🏥',
+  'Regional Hospital': '🏥',
+  'Provincial Tertiary Hospital': '🏥',
+  'National Central Hospital': '🏥',
+  'Medical Centre': '⚕️',
+};
+
+const evidenceLabels = {
+  verified_available: 'Service evidence available',
+  reported_on_official_page: 'Reported on official page',
+  reported_available_on_current_page:
+    'Reported on current page',
+  reported_available_by_city: 'Reported in city',
+  reported_available_by_province:
+    'Reported in province',
+};
+
+const getEvidenceLabel = (service) => {
+  return (
+    evidenceLabels[service.availability] ||
+    'Service status unknown'
+  );
+};
+
+const formatDistance = (distance) => {
+  if (distance === null || distance === undefined) {
+    return null;
+  }
+
+  if (distance < 1) {
+    return `${Math.round(distance * 1000)} m away`;
+  }
+
+  return `${distance.toFixed(1)} km away`;
 };
 
 export const HealthcareFinder = () => {
+  const [facilities, setFacilities] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedType, setSelectedType] = useState(null);
-  const [selectedProvince, setSelectedProvince] = useState(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
-  const [isProvinceFilterOpen, setIsProvinceFilterOpen] = useState(false);
+  const [selectedType, setSelectedType] = useState('');
+  const [selectedProvince, setSelectedProvince] = useState('');
+  const [userLocation, setUserLocation] = useState(null);
 
-  const provinces = [
-    'Eastern Cape',
-    'Free State',
-    'Gauteng',
-    'KwaZulu-Natal',
-    'Limpopo',
-    'Mpumalanga',
-    'Northern Cape',
-    'North West',
-    'Western Cape',
-  ];
-  // Filter facilities based on search and type
-  const filteredFacilities = (() => {
-    let results = mockFacilities;
+  const [isLoading, setIsLoading] = useState(true);
+  const [locationLoading, setLocationLoading] =
+    useState(false);
+  const [error, setError] = useState('');
 
-    // Apply search
-    if (searchQuery) {
-      results = searchFacilities(searchQuery);
+  useEffect(() => {
+    const loadFacilities = async () => {
+      try {
+        setIsLoading(true);
+        setError('');
+
+        const data = await getFacilities();
+        setFacilities(data);
+      } catch (err) {
+        console.error(err);
+        setError(
+          'We could not load healthcare facilities right now.'
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFacilities();
+  }, []);
+
+  const origin = userLocation || DEMO_ORIGIN;
+
+  const searchResults = useMemo(() => {
+    return searchFacilities(facilities, {
+      query: searchQuery,
+      type: selectedType,
+      province: selectedProvince,
+      origin,
+    });
+  }, [
+    facilities,
+    searchQuery,
+    selectedType,
+    selectedProvince,
+    origin,
+  ]);
+
+  const results = searchResults.rows;
+
+  const facilityTypes = useMemo(() => {
+    return [
+      ...new Set(
+        facilities
+          .map((facility) => facility.type)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [facilities]);
+
+  const provinces = useMemo(() => {
+    return [
+      ...new Set(
+        facilities
+          .map((facility) => facility.province)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [facilities]);
+
+  const handleFindNearest = () => {
+    if (!navigator.geolocation) {
+      setError(
+        'Location services are not available in this browser.'
+      );
+      return;
     }
 
-    // Apply type filter
-    if (selectedType) {
-      results = results.filter(f => f.type === selectedType);
-    }
+    setLocationLoading(true);
+    setError('');
 
-    if (selectedProvince) {
-    results = filterFacilitiesByProvince(selectedProvince).filter((facility) =>
-      results.some((result) => result.id === facility.id)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          label: 'Your location',
+        });
+
+        setLocationLoading(false);
+      },
+      () => {
+        setError(
+          'We could not access your location. Please check your browser permissions.'
+        );
+        setLocationLoading(false);
+      }
     );
-  }
+  };
 
-    return results;
-  })();
-
-  // eslint-disable-next-line no-unused-vars
-  const handleSearch = (value) => {
-    setIsSearching(true);
-    // Simulate search delay
-    setTimeout(() => setIsSearching(false), 500);
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedType('');
+    setSelectedProvince('');
   };
 
   return (
     <PatientLayout currentPage="Healthcare Finder">
-      <div className="space-y-8">
-        {/* Page title */}
-        <section>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Find Healthcare</h1>
-          <p className="text-gray-600">
-            Search and discover healthcare facilities near you
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Find Healthcare
+          </h1>
+
+          <p className="mt-2 text-gray-600">
+            Find healthcare facilities and services near you.
           </p>
-        </section>
+        </div>
 
-        {/* Search section */}
-        <section className="space-y-4">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSearch={handleSearch}
-            placeholder="Search by facility name, city, or service..."
-            size="lg"
-            isLoading={isSearching}
-          />
-        </section>
+        <Card>
+          <div className="space-y-4">
+            <SearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search by facility, city, province, or service..."
+              size="md"
+              isLoading={isLoading}
+            />
 
-        {/* Filters */}
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold text-gray-900">
-            Filter
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Filter by Type */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsTypeFilterOpen(!isTypeFilterOpen);
-                  setIsProvinceFilterOpen(false);
-                }}
-                className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-gray-300 transition-colors"
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={selectedType}
+                onChange={(e) =>
+                  setSelectedType(e.target.value)
+                }
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <span>
-                  By Type
-                  {selectedType && (
-                    <span className="ml-2 text-blue-600">
-                      • {selectedType}
-                    </span>
-                  )}
-                </span>
+                <option value="">All facility types</option>
 
-                <span className="text-gray-400">
-                  {isTypeFilterOpen ? '▲' : '▼'}
-                </span>
-              </button>
+                {facilityTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
 
-              {isTypeFilterOpen && (
-                <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedType(null);
-                      setIsTypeFilterOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
-                      selectedType === null
-                        ? 'text-blue-600 font-medium bg-blue-50'
-                        : 'text-gray-700'
-                    }`}
-                  >
-                    All Types
-                  </button>
+              <select
+                value={selectedProvince}
+                onChange={(e) =>
+                  setSelectedProvince(e.target.value)
+                }
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All provinces</option>
 
-                  {['Hospital', 'Clinic', 'Private Practice'].map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => {
-                        setSelectedType(type);
-                        setIsTypeFilterOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
-                        selectedType === type
-                          ? 'text-blue-600 font-medium bg-blue-50'
-                          : 'text-gray-700'
-                      }`}
-                    >
-                      {facilityTypeIcons[type]} {type}
-                    </button>
-                  ))}
-                </div>
-              )}
+                {provinces.map((province) => (
+                  <option key={province} value={province}>
+                    {province}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Filter by Province */}
-            <div className="relative">
-              <button
+            <div className="flex flex-wrap gap-3">
+              <Button
                 type="button"
-                onClick={() => {
-                  setIsProvinceFilterOpen(!isProvinceFilterOpen);
-                  setIsTypeFilterOpen(false);
-                }}
-                className="w-full flex items-center justify-between px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-gray-300 transition-colors"
+                onClick={handleFindNearest}
+                disabled={locationLoading}
+                isLoading={locationLoading}
               >
-                <span>
-                  By Province
-                  {selectedProvince && (
-                    <span className="ml-2 text-blue-600">
-                      • {selectedProvince}
-                    </span>
-                  )}
-                </span>
+                Find Near Me
+              </Button>
 
-                <span className="text-gray-400">
-                  {isProvinceFilterOpen ? '▲' : '▼'}
-                </span>
-              </button>
-
-              {isProvinceFilterOpen && (
-                <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-80 overflow-y-auto">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedProvince(null);
-                      setIsProvinceFilterOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
-                      selectedProvince === null
-                        ? 'text-blue-600 font-medium bg-blue-50'
-                        : 'text-gray-700'
-                    }`}
-                  >
-                    All Provinces
-                  </button>
-
-                  {provinces.map((province) => (
-                    <button
-                      key={province}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProvince(province);
-                        setIsProvinceFilterOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-3 text-sm hover:bg-gray-50 ${
-                        selectedProvince === province
-                          ? 'text-blue-600 font-medium bg-blue-50'
-                          : 'text-gray-700'
-                      }`}
-                    >
-                      {province}
-                    </button>
-                  ))}
-                </div>
+              {(searchQuery ||
+                selectedType ||
+                selectedProvince) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={clearFilters}
+                >
+                  Clear Filters
+                </Button>
               )}
             </div>
           </div>
-        </section>
+        </Card>
 
-        {/* Results */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {filteredFacilities.length} Result{filteredFacilities.length !== 1 ? 's' : ''}
-            </h3>
+        {error && (
+          <Card className="border-red-200 bg-red-50">
+            <p className="text-red-800">{error}</p>
+          </Card>
+        )}
+
+        {!isLoading && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <p className="text-sm text-gray-600">
+              {results.length} facilities found
+            </p>
+
+            {userLocation && (
+              <Badge variant="active">
+                Sorted by distance from your location
+              </Badge>
+            )}
           </div>
+        )}
 
-          {filteredFacilities.length > 0 ? (
-            <div className="grid gap-4">
-              {filteredFacilities.map(facility => (
-                <Card key={facility.id} className="hover:shadow-md transition-shadow">
-                  <div className="space-y-3">
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="text-lg font-semibold text-gray-900">
-                          {facilityTypeIcons[facility.type]} {facility.name}
-                        </h4>
-                        <p className="text-sm text-gray-600 mt-1">
-                          {facility.city}, {facility.province}
-                        </p>
-                      </div>
-                      <Badge variant="active">Verified</Badge>
+        {searchResults.intent &&
+          results.length > 0 && (
+            <Card className="border-blue-200 bg-blue-50">
+              <p className="text-sm text-blue-900">
+                Showing facilities with available evidence
+                related to your search.
+              </p>
+            </Card>
+          )}
+
+        {isLoading ? (
+          <Card>
+            <div className="py-10 text-center text-gray-500">
+              Loading healthcare facilities...
+            </div>
+          </Card>
+        ) : results.length === 0 ? (
+          <Card>
+            <div className="py-10 text-center">
+              <p className="text-lg font-semibold text-gray-900">
+                No facilities found
+              </p>
+
+              <p className="mt-2 text-gray-600">
+                Try a different search or remove one of the
+                filters.
+              </p>
+
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={clearFilters}
+                >
+                  Clear Filters
+                </Button>
+              </div>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {results.map((facility) => {
+              const matchedServices =
+                searchResults.intent
+                  ? facility.services?.filter((service) =>
+                      service.name
+                        ?.toLowerCase()
+                        .includes(
+                          searchResults.intent
+                            .replace('-', ' ')
+                        )
+                    )
+                  : [];
+
+              return (
+                <Card
+                  key={facility.id}
+                  className="flex flex-col"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="text-3xl shrink-0">
+                      {facilityTypeIcons[facility.type] ||
+                        '🏥'}
                     </div>
 
-                    {/* Address & Contact */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-600">{facility.address}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{facility.phone}</p>
-                        <p className="text-gray-600 text-xs">{facility.hours}</p>
-                      </div>
-                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <h2 className="text-lg font-semibold text-gray-900">
+                            {facility.name}
+                          </h2>
 
-                    {/* Rating */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-yellow-400">⭐</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {facility.rating} ({facility.reviews} reviews)
-                      </span>
-                    </div>
+                          <p className="text-sm text-gray-600">
+                            {facility.type}
+                          </p>
+                        </div>
 
-                    {/* Services */}
-                    <div>
-                      <p className="text-xs font-medium text-gray-700 mb-2">Services:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {facility.servicesOffered.slice(0, 3).map(service => (
-                          <Badge key={service} variant="pending">
-                            {service}
+                        {facility.coordinateCaution ? (
+                          <Badge variant="pending">
+                            Location caution
                           </Badge>
-                        ))}
-                        {facility.servicesOffered.length > 3 && (
-                          <span className="text-xs text-gray-600">
-                            +{facility.servicesOffered.length - 3} more
-                          </span>
+                        ) : (
+                          <Badge variant="active">
+                            Location verified
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="mt-3 space-y-1 text-sm text-gray-600">
+                        {facility.locality && (
+                          <p>
+                            {facility.locality}
+                            {facility.province
+                              ? `, ${facility.province}`
+                              : ''}
+                          </p>
+                        )}
+
+                        {facility.district && (
+                          <p>{facility.district}</p>
+                        )}
+
+                        {facility.address && (
+                          <p>{facility.address}</p>
+                        )}
+
+                        {formatDistance(
+                          facility.distanceKm
+                        ) && (
+                          <p className="font-medium text-gray-800">
+                            {formatDistance(
+                              facility.distanceKm
+                            )}
+                          </p>
                         )}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Action button */}
+                  {matchedServices?.length > 0 && (
+                    <div className="mt-5 border-t border-gray-100 pt-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        Relevant service
+                      </p>
+
+                      <div className="mt-2 space-y-2">
+                        {matchedServices
+                          .slice(0, 3)
+                          .map((service) => (
+                            <div
+                              key={`${facility.id}-${service.name}`}
+                              className="rounded-lg bg-gray-50 p-3"
+                            >
+                              <p className="font-medium text-gray-900">
+                                {service.name}
+                              </p>
+
+                              <p className="mt-1 text-xs text-gray-600">
+                                {getEvidenceLabel(service)}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex flex-wrap gap-3">
                     <Link
-                    to={`/patient/healthcare/${facility.id}`}
-                    className="block"
+                      to={`/patient/healthcare/${facility.id}`}
                     >
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        fullWidth
-                        className="mt-2"
-                    >
+                      <Button type="button">
                         View Details
-                    </Button>
+                      </Button>
                     </Link>
+
+                    <a
+                      href={googleMapsUrl(facility)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                      >
+                        Google Maps
+                      </Button>
+                    </a>
                   </div>
                 </Card>
-              ))}
-            </div>
-          ) : (
-            <Card className="text-center py-8">
-              <p className="text-gray-600">No facilities found matching your search.</p>
-              <p className="text-sm text-gray-500 mt-2">Try adjusting your search or filters.</p>
-            </Card>
-          )}
-        </section>
+              );
+            })}
+          </div>
+        )}
       </div>
     </PatientLayout>
   );
